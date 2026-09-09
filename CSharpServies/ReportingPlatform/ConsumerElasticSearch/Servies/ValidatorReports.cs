@@ -11,9 +11,9 @@ namespace ConsumerElasticSearch.Servies
     public class ValidatorReports
     {
 
-        public static bool Validate(string rawReport)
+        public static bool Validate(Report report)
         {
-            var report = JsonSerializer.Deserialize<Report>(rawReport);
+            
             
             if ( ! ValidateEmptyFeileds(report))
                 return false;
