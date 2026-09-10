@@ -10,7 +10,15 @@ namespace ConsumerElasticSearch.Models
     public class Report
     {
         public string? reportId { get; set; } = string.Empty;
-        public string? @timestamp { get; set; } = string.Empty;
+
+        [JsonPropertyName("@timestamp")]
+        public string? timestamp { get; set; } = string.Empty;
+
+        [JsonPropertyName("timestamp")]
+        public string? KafkaTimestampSetter
+        {
+            set => timestamp = value;
+        }
 
         public string? agentId { get; set; } = string.Empty;
 
