@@ -10,10 +10,12 @@ namespace ReportApi.Repositories
     {
         private ElasticsearchClient _client;
 
+        private ILogger<RepositoryReports> _logger;
         private const string _reportsIndex = "reports";
-        public RepositoryReports(ElasticsearchClient client)
+        public RepositoryReports(ElasticsearchClient client,ILogger<RepositoryReports> logger)
         {
             _client = client;
+            _logger = logger;
         
         }
 
@@ -56,7 +58,8 @@ namespace ReportApi.Repositories
             )
             .Sort(r => r
              .Field(r => r.timestamp)
-            ));
+            ).Size(1000)
+            );
 
             if (!response.IsValidResponse)
                 throw new InvalidOperationException(response.ElasticsearchServerError?.Error?.Reason);
@@ -106,7 +109,7 @@ namespace ReportApi.Repositories
 
             var response = await _client.SearchAsync<Report>(search => search
             .Indices(_reportsIndex)
-            .Query(query)
+            .Query(query).Size(1000)
             );
 
             if (!response.IsValidResponse)
@@ -150,7 +153,7 @@ namespace ReportApi.Repositories
 
             var response = await _client.SearchAsync<Report>(s => s
                 .Indices(_reportsIndex)
-                .Query(query)
+                .Query(query).Size(1000)
             );
 
             if (!response.IsValidResponse)
@@ -227,7 +230,7 @@ namespace ReportApi.Repositories
             var response = await _client.SearchAsync<Report>(search => search
             .Indices(_reportsIndex)
             .Query(quary)
-            .Size(100)
+            .Size(1000)
             
             );
 
@@ -249,7 +252,7 @@ namespace ReportApi.Repositories
             .Add("reportTypes", a => a.Terms(t => t.Field("reportType")))
             .Add("theaters", a => a.Terms(t => t.Field("theater")))
             
-            )
+            ).Size(1000)
             );
 
             if (!response.IsValidResponse)
