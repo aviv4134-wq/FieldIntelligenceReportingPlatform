@@ -23,7 +23,7 @@ namespace ConsumerElasticSearch
                 .AddJsonFile("appsettings.json", false, true)
                 .Build();
 
-            Serilog.Debugging.SelfLog.Enable(Console.Error);
+            
 
             Log.Logger = new LoggerConfiguration()
             .ReadFrom.Configuration(builder)
@@ -31,11 +31,13 @@ namespace ConsumerElasticSearch
 
 
 
-            string bootstrap = builder["kafka:BootStrapServer"]!;
-            string topic = builder["kafka:Topic:rawdata"]!;
-            string groupId = builder["kafka:GroupId"]!;
+            string bootstrap = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVER")!;
+            string topic = Environment.GetEnvironmentVariable("KAFKA_RAW_REPORTS_TOPIC")!;
+            string groupId = Environment.GetEnvironmentVariable("KAFKA_GROUP_ID")!;
 
-            var settings = new ElasticsearchClientSettings(new Uri("http://localhost:9200"))
+            string elasticUrl = Environment.GetEnvironmentVariable("ELASTICSEARCH_URL")!;
+
+            var settings = new ElasticsearchClientSettings(new Uri(elasticUrl))
                 .DefaultMappingFor<Report>(m => m.IdProperty(r => r.reportId));
 
             var client = new ElasticsearchClient(settings);
@@ -119,26 +121,36 @@ namespace ConsumerElasticSearch
                     if (!isValidReport)
                         continue;
 
-                    var response = await client.PingAsync();
-
-                    if (!response.IsValidResponse)
-                        Log.Error("the server offline");
-
-                    var IsExsists = await client.ExistsAsync("reports", report.reportId);
-
-                    if (!IsExsists.Exists)
+                    using (var scope = serviesProvidor.CreateScope())
                     {
-                        report.processedAt = DateTime.UtcNow;
-                        var IsRportCreated = await client.IndexAsync(report, x => x.Index("reports"));
 
-                        if (!IsRportCreated.IsValidResponse)
-                            Log.Error("report not created ");
+                        var clientElastic = scope.ServiceProvider.GetRequiredService<ElasticsearchClient>();
 
-                        else Log.Information("report add to elastic search");
+                        var response = await client.PingAsync();
+
+                        if (!response.IsValidResponse)
+                            Log.Error("the server offline");
+
+                        var IsExsists = await client.ExistsAsync("reports", report.reportId);
+
+                        if (!IsExsists.Exists)
+                        {
+                            report.processedAt = DateTime.UtcNow;
+                            var IsRportCreated = await client.IndexAsync(report, x => x.Index("reports"));
+
+                            if (!IsRportCreated.IsValidResponse)
+                                Log.Error("report not created ");
+
+                            else Log.Information("report add to elastic search");
+
+                        }
+
+                        else Log.Error("the report {report.reportId} is duplicate", report.reportId);
+
+
 
                     }
-                    
-                    else Log.Error("the report {report.reportId} is duplicate", report.reportId);
+                   
 
                     
                 }
