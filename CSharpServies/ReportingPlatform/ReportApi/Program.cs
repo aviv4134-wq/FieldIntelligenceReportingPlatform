@@ -31,7 +31,7 @@ try
 
     builder.Services.AddExceptionHandler<CustomExceptionHandler>();
 
-    var settings = new ElasticsearchClientSettings(new Uri("http://localhost:9200"));
+    var settings = new ElasticsearchClientSettings(new Uri(Environment.GetEnvironmentVariable("ELASTICSEARCH_URL")!));
 
     var client = new ElasticsearchClient(settings);
 
@@ -41,7 +41,7 @@ try
     var app = builder.Build();
 
     // Configure the HTTP request pipeline.
-    if (app.Environment.IsDevelopment())
+    if (app.Environment.IsProduction())
     {
         app.UseSwagger();
         app.UseSwaggerUI();

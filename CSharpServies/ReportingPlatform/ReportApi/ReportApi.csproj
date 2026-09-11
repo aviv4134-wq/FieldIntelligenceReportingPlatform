@@ -14,4 +14,10 @@
     <ProjectReference Include="..\ConsumerElasticSearch\ConsumerElasticSearch.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="dockerfile">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>
