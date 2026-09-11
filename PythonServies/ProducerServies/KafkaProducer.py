@@ -1,10 +1,17 @@
 from confluent_kafka import Producer
+import os
+
+kafka_server = os.environ.get("KAFKA_BOOTSTRAP_SERVER")
+topic = os.getenv("KAFKA_RAW_REPORTS_TOPIC","raw_reports")
+clientId = os.getenv("KAFKA_CLIENT_ID")
+
+print(f"Connecting to Kafka at: {kafka_server}")
 
 
-topic = "raw_reports"
 
-conf = {'bootstrap.servers': 'localhost:9092',
-        'client.id': "dsa"}
+
+conf = {'bootstrap.servers': kafka_server,
+        'client.id': clientId}
 
 producer = Producer(conf)
 
