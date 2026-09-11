@@ -1,3 +1,4 @@
 <Solution>
   <Project Path="ConsumerElasticSearch/ConsumerElasticSearch.csproj" />
+  <Project Path="ReportApi/ReportApi.csproj" />
 </Solution>

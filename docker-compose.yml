@@ -1,5 +1,5 @@
 services:
-  broker:
+  broker2:
     image: apache/kafka:latest
     container_name: broker2
     ports:
@@ -7,39 +7,107 @@ services:
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093  #remove localhost
-      KAFKA_ADVERTISED_LISTENERS: ${KAFKA_ADVERTISED_LISTENERS} #broker
+      KAFKA_LISTENERS: ${KAFKA_LISTENERS} 
+      KAFKA_ADVERTISED_LISTENERS: ${KAFKA_ADVERTISED_LISTENERS} 
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
-      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:9093 #broker
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@broker2:9093 
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       KAFKA_NUM_PARTITIONS: 1
+    
+    
+    healthcheck:
+      test: opt/kafka/bin/kafka-cluster.sh cluster-id --bootstrap-server broker2:9092 || exit 1
+      interval: 3s
+      timeout: 12s
+      retries: 2
+          
+  
 
     
 
 
-  es:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+  elasticsearch:
+    image: elasticsearch:8.16.1
+    container_name: elasticsearch
     environment:
       - discovery.type=single-node
-      - xpack.security.enabled=false
-      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+      - xpack.security.enabled=false 
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
     ports:
-      - "9200:9200"
+      - ${ELASTIC_PORTS}
     healthcheck:
       test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\"'"]
       interval: 10s
-      retries: 12
+      timeout: 10s
+      retries: 3
+
 
   kib:
-    image: docker.elastic.co/kibana/kibana:8.15.0
+      image: docker.elastic.co/kibana/kibana:8.16.1
+      environment:
+        - ELASTICSEARCH_HOSTS=${ELASTICSEARCH_HOSTS}
+      ports:
+        - "9202:5601"
+      depends_on:
+        elasticsearch:
+          condition: service_healthy
+
+  producer:
+    build: ./PythonServies
+    container_name: producer
     environment:
-      - ELASTICSEARCH_HOSTS=http://es:9200
-    ports:
-      - "5601:5601"
+      - KAFKA_BOOTSTRAP_SERVER=${KAFKA_BOOTSTRAP_SERVER}
+      - KAFKA_RAW_REPORTS_TOPIC=${KAFKA_RAW_REPORTS_TOPIC}
+      - KAFKA_CLIENT_ID= ${KAFKA_CLIENT_ID}
+  
+      
+      
+      
     depends_on:
-      es:
-        condition: service_healthy
+      broker2:
+       condition: service_healthy
+
+  consumer2:
+    build: ./CSharpServies/ReportingPlatform/ConsumerElasticSearch
+    container_name: consumer2
+    environment:
+    -  KAFKA_BOOTSTRAP_SERVER=${KAFKA_BOOTSTRAP_SERVER}
+    - KAFKA_RAW_REPORTS_TOPIC=${KAFKA_RAW_REPORTS_TOPIC}
+    - KAFKA_GROUP_ID=${KAFKA_GROUP_ID}
+    -  ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+    depends_on:
+      broker2:
+       condition: service_healthy
+      elasticsearch:
+        condition: service_healthy 
+      producer:
+        condition: service_started
+
+  reportsapi:
+    build:
+      context: .
+      dockerfile: CSharpServies/ReportingPlatform/ReportApi/dockerfile
+    container_name: reportsApi
+    ports:
+    - ${REPORTS_API_PORTS}
+    environment:
+     - ELASTICSEARCH_URL=${ELASTICSEARCH_URL}
+    depends_on:
+     elasticsearch:
+        condition: service_started 
+     consumer2:
+        condition: service_started
+
+        
+
+       
+
+  
+
+  
+  
+    

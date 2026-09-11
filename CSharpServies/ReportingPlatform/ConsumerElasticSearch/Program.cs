@@ -2,11 +2,11 @@
 using ConsumerElasticSearch.Models;
 using ConsumerElasticSearch.Servies;
 using Elastic.Clients.Elasticsearch;
-using Elastic.Clients.Elasticsearch;
 using Elastic.Clients.Elasticsearch.Nodes;
 using Elastic.Transport;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Serilog;
 using System;
 using System.Text.Json;
 
@@ -23,24 +23,40 @@ namespace ConsumerElasticSearch
                 .AddJsonFile("appsettings.json", false, true)
                 .Build();
 
-            string bootstrap = builder["kafka:BootStrapServer"]!;
-            string topic = builder["kafka:Topic:rawdata"]!;
-            string groupId = builder["kafka:GroupId"]!;
+            
 
-            var settings = new ElasticsearchClientSettings(new Uri("http://localhost:9200"))
+            Log.Logger = new LoggerConfiguration()
+            .ReadFrom.Configuration(builder)
+            .CreateLogger();
+
+
+
+            string bootstrap = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVER")!;
+            string topic = Environment.GetEnvironmentVariable("KAFKA_RAW_REPORTS_TOPIC")!;
+            string groupId = Environment.GetEnvironmentVariable("KAFKA_GROUP_ID")!;
+
+            string elasticUrl = Environment.GetEnvironmentVariable("ELASTICSEARCH_URL")!;
+
+            var settings = new ElasticsearchClientSettings(new Uri(elasticUrl))
                 .DefaultMappingFor<Report>(m => m.IdProperty(r => r.reportId));
 
             var client = new ElasticsearchClient(settings);
 
+            
 
             var service = new ServiceCollection();
 
+            service.AddSerilog();
+
             service.AddSingleton(client);
+            
+            
 
             var serviesProvidor = service.BuildServiceProvider();
 
             using ( var scope = serviesProvidor.CreateScope())
             {
+
                 var elasticClient = scope.ServiceProvider.GetRequiredService<ElasticsearchClient>();
 
                 var response  = await elasticClient.Indices.CreateAsync("reports", c => c
@@ -52,7 +68,7 @@ namespace ConsumerElasticSearch
                 .Date(r => r.timestamp)
                 .Keyword(r => r.agentId)
                 .Keyword(r => r.unit)
-                .Text(r => r.theater)
+                .Keyword(r => r.theater)
                 .Keyword(r => r.sector)
                 .Keyword(r => r.location)
                 .Keyword(r => r.reportType)
@@ -64,10 +80,9 @@ namespace ConsumerElasticSearch
                 .Date(r => r.processedAt)      
                 )));
 
-                if (!response.IsValidResponse)
-                    Console.WriteLine("error index not created ");
+                
 
-                else Console.WriteLine("index created");
+                Log.Information("index created");
                 
             }
 
@@ -85,37 +100,70 @@ namespace ConsumerElasticSearch
             var consumer = new ConsumerBuilder<string, string>(config).Build();
 
             consumer.Subscribe(topic);
+            
 
             while (true)
             {
-                var result = consumer.Consume(TimeSpan.FromSeconds(2));
-                if (result == null || result.Message?.Value == null)
-                    continue;
-               
-                var report = JsonSerializer.Deserialize<Report>(result.Message.Value);
-
-
-                bool isValidReport = ValidatorReports.Validate(report);
-                consumer.Commit();
-
-                if (!isValidReport) 
-                    continue;
-
-               var response = await client.PingAsync();
-                
-               if  (! response.IsValidResponse)
-                    Console.WriteLine("the server offline");
-
-                var IsExsists = await client.ExistsAsync("reports", report.reportId);
-
-                if (! IsExsists.Exists)
+                try
                 {
-                    var IsRportCreated = await client.IndexAsync(report, x => x.Index("reports"));
-                    if (! IsRportCreated.IsValidResponse)
-                        Console.WriteLine("report not created ");
-                    else Console.WriteLine("report created");
-                }
 
+
+                    var result = consumer.Consume(TimeSpan.FromSeconds(2));
+                    if (result == null || result.Message?.Value == null)
+                        continue;
+
+                    var report = JsonSerializer.Deserialize<Report>(result.Message.Value);
+
+
+                    bool isValidReport = ValidatorReports.Validate(report);
+                    consumer.Commit();
+
+                    if (!isValidReport)
+                        continue;
+
+                    using (var scope = serviesProvidor.CreateScope())
+                    {
+
+                        var clientElastic = scope.ServiceProvider.GetRequiredService<ElasticsearchClient>();
+
+                        var response = await client.PingAsync();
+
+                        if (!response.IsValidResponse)
+                            Log.Error("the server offline");
+
+                        var IsExsists = await client.ExistsAsync("reports", report.reportId);
+
+                        if (!IsExsists.Exists)
+                        {
+                            report.processedAt = DateTime.UtcNow;
+                            var IsRportCreated = await client.IndexAsync(report, x => x.Index("reports"));
+
+                            if (!IsRportCreated.IsValidResponse)
+                                Log.Error("report not created ");
+
+                            else Log.Information("report add to elastic search");
+
+                        }
+
+                        else Log.Error("the report {report.reportId} is duplicate", report.reportId);
+
+
+
+                    }
+                   
+
+                    
+                }
+                catch (Exception ex)
+                {
+
+                    Log.Error(ex.Message);
+                    Log.Fatal("close program");
+                    Log.CloseAndFlush();
+                    throw;
+                }
+                
+               
             }
         }
     }

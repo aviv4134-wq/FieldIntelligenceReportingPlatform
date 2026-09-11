@@ -1,0 +1,17 @@
+﻿FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+
+# 1. העתקת כל קוד המקור מתיקיית השורש
+COPY . .
+
+# 2. Restore ו-Publish עבור ReportApi
+RUN dotnet restore "CSharpServies/ReportingPlatform/ReportApi/ReportApi.csproj"
+RUN dotnet publish "CSharpServies/ReportingPlatform/ReportApi/ReportApi.csproj" -c Release -o /app/out /p:ErrorOnDuplicatePublishOutputFiles=false
+
+# 3. שלב ה-Runtime
+FROM mcr.microsoft.com/dotnet/aspnet:8.0
+WORKDIR /app
+COPY --from=build /app/out .
+
+EXPOSE 8081
+ENTRYPOINT ["dotnet", "ReportApi.dll"]
